@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>英検 英単語4択テスト</title>
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #ffffff; /* ★ 全体を白く */
+      margin: 0;
+      padding: 16px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      padding: 20px;
+      max-width: 440px;
+      margin: 0 auto;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+      text-align: center;
+      position: relative;
+      z-index: 1;
+    }
+
+    h1 { font-size: 20px; margin-bottom: 6px; }
+
+    .progress, .timer, .history {
+      font-size: 14px;
+      color: #555;
+    }
+
+    .question {
+      font-size: 28px;
+      font-weight: bold;
+      margin: 20px 0;
+    }
+
+    .choices {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    button.choice {
+      padding: 14px 10px;
+      font-size: 14px;
+      border: none;
+      border-radius: 12px;
+      background: #4f46e5;
+      color: white;
+      cursor: pointer;
+    }
+
+    button.choice.correct { background: #16a34a; }
+    button.choice.wrong { background: #dc2626; }
+
+    button.action {
+      margin-top: 10px;
+      padding: 12px;
+      width: 100%;
+      border: none;
+      border-radius: 12px;
+      background: #0ea5e9;
+      color: white;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .result {
+      margin-top: 12px;
+      font-size: 16px;
+      font-weight: bold;
+    }
+
+    /* ★ 枠外・右下の大きなイラスト */
+    .corner-image {
+      position: fixed;
+      right: -20px;
+      bottom: -20px;
+      width: 330px;          /* ★ 大きく */
+      opacity: 0.95;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    @media (max-width: 480px) {
+      .corner-image {
+        width: 160px;
+        right: -10px;
+        bottom: -10px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+<!-- ★ 画面右下（枠外）のイラスト -->
+<img src="fox.png" alt="キャラクター" class="corner-image">
+
+<div class="card">
+  <h1 id="title">📘 英検 英単語テスト</h1>
+
+  <div id="home">
+    <p>4択クイズ形式で英単語をテストしよう！</p>
+
+    <label>
+      英検レベル：
+      <select id="levelSelect">
+        <option value="3">英検3級</option>
+        <option value="pre2">英検準2級</option>
+      </select>
+    </label>
+
+    <br><br>
+    <button class="action" id="startBtn">テスト開始</button>
+  </div>
+
+  <div id="test" style="display:none;">
+    <div class="history" id="history"></div>
+    <div class="progress" id="progress"></div>
+    <div class="timer" id="timer"></div>
+    <div class="question" id="question"></div>
+    <div class="choices" id="choices"></div>
+    <div class="result" id="result"></div>
+
+    <button class="action" id="restart" style="display:none;">もう一度テスト</button>
+    <button class="action" id="retryWrong" style="display:none;">間違えた問題だけ復習</button>
+    <button class="action" id="backHome" style="display:none;">ホームに戻る</button>
+  </div>
+</div>
+
+<script src="word-list.js"></script>
+<script>
+const QUESTION_COUNT = 10;
+let allWords=[], words=[], wrongWords=[], index=0, score=0;
+let timerId, timeLeft=10;
+
+const homeEl=document.getElementById("home");
+const testEl=document.getElementById("test");
+const questionEl=document.getElementById("question");
+const progressEl=document.getElementById("progress");
+const choicesEl=document.getElementById("choices");
+const resultEl=document.getElementById("result");
+const restartBtn=document.getElementById("restart");
+const retryWrongBtn=document.getElementById("retryWrong");
+const backHomeBtn=document.getElementById("backHome");
+const timerEl=document.getElementById("timer");
+const historyEl=document.getElementById("history");
+
+const shuffle=a=>a.sort(()=>Math.random()-0.5);
+
+document.getElementById("startBtn").onclick=()=>{
+  const level=document.getElementById("levelSelect").value;
+  allWords=wordLevels[level];
+  homeEl.style.display="none";
+  testEl.style.display="block";
+  startTest(allWords);
+};
+
+function startTest(source){
+  words=shuffle([...source]).slice(0,QUESTION_COUNT);
+  wrongWords=[]; index=0; score=0;
+  restartBtn.style.display=
+  retryWrongBtn.style.display=
+  backHomeBtn.style.display="none";
+  historyEl.textContent="";
+  showQuestion();
+}
+
+function startTimer(){
+  clearInterval(timerId);
+  timeLeft=10;
+  timerEl.textContent=`残り時間：${timeLeft} 秒`;
+  timerId=setInterval(()=>{
+    timeLeft--;
+    timerEl.textContent=`残り時間：${timeLeft} 秒`;
+    if(timeLeft<=0){
+      clearInterval(timerId);
+      wrongWords.push(words[index]);
+      next();
+    }
+  },1000);
+}
+
+function showQuestion(){
+  const q=words[index];
+  questionEl.textContent=q.en;
+  progressEl.textContent=`${index+1} / ${words.length} 問`;
+  resultEl.textContent="";
+  choicesEl.innerHTML="";
+  startTimer();
+
+  const choices=shuffle([q.jp,...q.similar]);
+  choices.forEach(c=>{
+    const b=document.createElement("button");
+    b.textContent=c;
+    b.className="choice";
+    b.onclick=()=>selectAnswer(b,c===q.jp);
+    choicesEl.appendChild(b);
+  });
+}
+
+function selectAnswer(btn,ok){
+  clearInterval(timerId);
+  document.querySelectorAll(".choice").forEach(b=>b.disabled=true);
+  if(ok){
+    score++; btn.classList.add("correct");
+    resultEl.textContent="⭕ 正解！";
+  }else{
+    btn.classList.add("wrong");
+    wrongWords.push(words[index]);
+    resultEl.textContent=`❌ 不正解… 正解は「${words[index].jp}」`;
+  }
+  setTimeout(next,1000);
+}
+
+function next(){
+  index++;
+  index<words.length ? showQuestion() : showFinal();
+}
+
+function showFinal(){
+  questionEl.textContent="テスト終了！";
+  timerEl.textContent="";
+  choicesEl.innerHTML="";
+  const percent=Math.round(score/words.length*100);
+  const last=localStorage.getItem("lastScore");
+  historyEl.textContent=last
+    ? `前回：${last}% ／ 今回：${percent}%（${percent-last>=0?"+":""}${percent-last}%）`
+    : "前回の成績：なし";
+  localStorage.setItem("lastScore",percent);
+  resultEl.textContent=`結果：${score} / ${words.length} 問正解（${percent}%）`;
+  restartBtn.style.display=
+  backHomeBtn.style.display="block";
+  if(wrongWords.length) retryWrongBtn.style.display="block";
+}
+
+restartBtn.onclick=()=>startTest(allWords);
+retryWrongBtn.onclick=()=>startTest(wrongWords);
+backHomeBtn.onclick=()=>{
+  testEl.style.display="none";
+  homeEl.style.display="block";
+};
+</script>
+</body>
+</html>
